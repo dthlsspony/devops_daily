@@ -24,8 +24,20 @@ logger = logging.getLogger(__name__)
 
 TELEGRAM_MESSAGE_LIMIT = 4096
 PARSE_MODE_MARKDOWN_V2 = "MarkdownV2"
-#: Сколько источников перечислять в подвале поста.
-MAX_SOURCES_IN_FOOTER = 3
+
+#: Заголовок раздела в реферате.
+_HEADING_LINE_RE = re.compile(r"^\s{0,3}#{1,6}\s+\S")
+#: Пункт списка в реферате.
+_BULLET_RE = re.compile(r"^\s*[-*•]\s+\S")
+#: Ссылка внутри пункта.
+_URL_RE = re.compile(r"https?://[^\s)>\]]+")
+#: Фразы-заглушки: раздел с таким текстом нечего печатать.
+_PLACEHOLDER_RE = re.compile(
+    r"^(нет дополнительной информации|дополнительной информации нет|нет других новостей"
+    r"|нет прочих новостей|без дополнительной информации|других новостей нет"
+    r"|нет больше новостей|ничего нового нет|нет)\s*[.!]?$",
+    re.IGNORECASE,
+)
 
 #: Символы, которые Telegram считает специальными в MarkdownV2.
 _SPECIALS_RE = re.compile(r"([_*\[\]()~`>#+\-=|{}.!])")
@@ -109,15 +121,77 @@ def strip_markdown_v2(text: str) -> str:
     return plain.replace("•", "-")
 
 
-def _sources_text(sources: tuple[str, ...]) -> str:
-    """Источники для подвала поста: первые несколько и счётчик остальных."""
-    if not sources:
-        return "Источники: нет данных"
-    listed = list(sources[:MAX_SOURCES_IN_FOOTER])
-    text = ", ".join(listed)
-    if len(sources) > len(listed):
-        text = f"{text} и ещё {len(sources) - len(listed)}"
-    return f"Источники: {text}"
+def _normalize_bullet(line: str) -> str:
+    """Нормализованный текст пункта — для сравнения повторов."""
+    text = _URL_RE.sub(" ", line)
+    text = re.sub(r"[^\w\s]", " ", text.lower())
+    return " ".join(text.split())
+
+
+def _first_url(line: str) -> str:
+    """Первая ссылка в пункте (без завершающей пунктуации)."""
+    match = _URL_RE.search(line)
+    if match is None:
+        return ""
+    return match.group(0).rstrip(".,;:")
+
+
+def clean_digest(text: str) -> str:
+    """Убрать из реферата повторы и разделы без содержания.
+
+    Модель иногда повторяет одну и ту же новость в разделах «Главное» и
+    «Детали» (обычно с той же ссылкой) и иногда выводит пустой раздел с
+    фразой-заглушкой вроде «Нет дополнительной информации». Повтор ловим по
+    ссылке и по совпадению текста, пустые разделы убираем целиком.
+
+    Если после чистки не осталось ни одного пункта, исходный текст
+    возвращается как есть: лучше лишний текст, чем пустой пост.
+    """
+    lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+
+    blocks: list[list[str]] = []
+    current: list[str] = []
+    for line in lines:
+        if _HEADING_LINE_RE.match(line):
+            blocks.append(current)
+            current = [line]
+        else:
+            current.append(line)
+    blocks.append(current)
+
+    seen_urls: set[str] = set()
+    seen_texts: set[str] = set()
+    kept: list[list[str]] = []
+
+    for block in blocks:
+        heading = block[0] if block and _HEADING_LINE_RE.match(block[0]) else None
+        body = block[1:] if heading is not None else block
+
+        kept_body: list[str] = []
+        for line in body:
+            if _BULLET_RE.match(line):
+                url = _first_url(line)
+                normalized = _normalize_bullet(line)
+                if (url and url in seen_urls) or (normalized and normalized in seen_texts):
+                    continue
+                if url:
+                    seen_urls.add(url)
+                if normalized:
+                    seen_texts.add(normalized)
+            kept_body.append(line)
+
+        if heading is not None:
+            has_bullets = any(_BULLET_RE.match(line) for line in kept_body)
+            text_body = " ".join(line.strip() for line in kept_body).strip()
+            if not has_bullets and (not text_body or _PLACEHOLDER_RE.match(text_body)):
+                # Раздел без содержания: не печатаем его вовсе.
+                continue
+
+        kept.append([heading, *kept_body] if heading is not None else kept_body)
+
+    if not any(_BULLET_RE.match(line) for block in kept for line in block):
+        return text
+    return "\n".join("\n".join(block) for block in kept)
 
 
 def utf16_length(text: str) -> int:
@@ -215,15 +289,16 @@ class TelegramPublisher:
         logger.info("publish_finished parts=%d", len(chunks))
 
     def _compose(self, digest: Digest) -> str:
-        """Собрать итоговое сообщение: заголовок с тегом, реферат и подвал."""
+        """Собрать итоговое сообщение: заголовок с тегом, реферат и хэштег.
+
+        Счётчика новостей и источников нет: он считал переданные модели записи,
+        а читатель видит свёрнутый реферат — числа расходились.
+        """
         tag = digest.tag or DEFAULT_TAG
         header = f"{tag_icon(tag)} {escape_markdown_v2(tag)}"
-        footer = escape_markdown_v2(
-            f"Новостей: {digest.item_count} · {_sources_text(digest.sources)}"
-        )
         hashtag = escape_markdown_v2(f"#{tag}")
-        body = to_markdown_v2(digest.text)
-        return f"{header}\n\n{body}\n\n{footer}\n{hashtag}"
+        body = to_markdown_v2(clean_digest(digest.text))
+        return f"{header}\n\n{body}\n\n{hashtag}"
 
     async def _send(self, chunk: str) -> None:
         """Отправить одну часть; если Telegram не разобрал разметку — как plain text."""

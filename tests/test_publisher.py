@@ -217,13 +217,13 @@ async def test_post_header_shows_the_tag() -> None:
 
     await publisher.publish(_digest("## Главное\n- пункт", count=3, tag="php"))
 
-    text = bot.messages[0][1]
+    text = strip_markdown_v2(bot.messages[0][1])
     assert text.startswith("🐘 php")
-    assert "Новостей: 3" in text
-    assert "#php" in text
+    assert "Новостей" not in text
+    assert text.rstrip().endswith("#php")
 
 
-async def test_post_footer_lists_sources() -> None:
+async def test_post_has_no_sources_list() -> None:
     bot = FakeBot()
     publisher = TelegramPublisher(bot, "-100123", rate_limit_delay=0)
     digest = Digest(
@@ -235,10 +235,9 @@ async def test_post_footer_lists_sources() -> None:
 
     await publisher.publish(digest)
 
-    text = bot.messages[0][1]
-    assert "Источники: thehackernews, bleepingcomputer, snyk и ещё 1" in text
-    # В MarkdownV2 спецсимволы экранированы — проверяем видимый результат.
-    assert strip_markdown_v2(text).rstrip().endswith("#supply-chain")
+    text = strip_markdown_v2(bot.messages[0][1])
+    assert "Источники" not in text
+    assert text.rstrip().endswith("#supply-chain")
 
 
 async def test_post_without_tag_uses_the_default_one() -> None:
@@ -248,3 +247,34 @@ async def test_post_without_tag_uses_the_default_one() -> None:
     await publisher.publish(_digest("- пункт"))
 
     assert bot.messages[0][1].startswith("📰 прочее")
+
+
+async def test_post_has_no_news_counter() -> None:
+    # Счётчик считал переданные модели записи, а читатель видит свёрнутый
+    # реферат — числа расходились, поэтому счётчика нет вовсе.
+    bot = FakeBot()
+    publisher = TelegramPublisher(bot, "-100123", rate_limit_delay=0)
+
+    await publisher.publish(_digest("## Главное\n- пункт", count=7, tag="php"))
+
+    text = strip_markdown_v2(bot.messages[0][1])
+    assert "Новостей" not in text
+    assert "Источники" not in text
+    assert text.rstrip().endswith("#php")
+
+
+async def test_post_drops_empty_details_section() -> None:
+    bot = FakeBot()
+    publisher = TelegramPublisher(bot, "-100123", rate_limit_delay=0)
+    digest = _digest(
+        "## Главное\n- пункт со ссылкой (https://example.com/a)\n\n"
+        "## Детали\nНет дополнительной информации",
+        tag="php",
+    )
+
+    await publisher.publish(digest)
+
+    text = strip_markdown_v2(bot.messages[0][1])
+    assert "Детали" not in text
+    assert "Нет дополнительной информации" not in text
+    assert "пункт со ссылкой" in text

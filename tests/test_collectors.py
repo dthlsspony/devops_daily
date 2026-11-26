@@ -65,7 +65,7 @@ async def test_collect_parses_real_bleepingcomputer_feed(bleeping_feed_bytes: by
     )
     assert (
         items[0].link
-        == "https://www.bleepingcomputer.com/news/security/palo-alto-networks-warns-of-fragnesia-flaw-exploited-in-pan-os-attacks"
+        == "https://bleepingcomputer.com/news/security/palo-alto-networks-warns-of-fragnesia-flaw-exploited-in-pan-os-attacks"
     )
 
 
@@ -84,7 +84,7 @@ async def test_atom_feed_is_supported(php_feed_bytes: bytes) -> None:
         "PHP 8.3.37 released!",
         "PHP 8.2.36 released!",
     ]
-    assert items[0].link == "http://php.net/releases/8_6_0.php"
+    assert items[0].link == "https://php.net/releases/8_6_0.php"
     assert items[0].published_at == datetime(2026, 11, 19, tzinfo=UTC)
 
 
@@ -236,3 +236,18 @@ def test_clean_summary_removes_tags_and_truncates() -> None:
 )
 def test_canonical_link_normalizes_trailing_slash(url: str, expected: str) -> None:
     assert canonical_link(url) == expected
+
+
+def test_canonical_link_normalizes_scheme_and_www() -> None:
+    # Одна и та же статья со ссылками http://www.x/a и https://x/a — это
+    # один ключ дедупликации, иначе она попала бы в два тега.
+    assert canonical_link("http://www.example.com/news/1") == "https://example.com/news/1"
+    assert canonical_link("https://example.com/news/1") == "https://example.com/news/1"
+
+
+def test_canonical_link_keeps_port() -> None:
+    assert canonical_link("https://example.com:8443/a") == "https://example.com:8443/a"
+
+
+def test_canonical_link_keeps_non_http_scheme() -> None:
+    assert canonical_link("ftp://example.com/a") == "ftp://example.com/a"

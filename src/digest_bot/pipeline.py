@@ -27,7 +27,7 @@ from datetime import timedelta
 
 from digest_bot.collectors.base import Collector
 from digest_bot.dedup import SQLiteStore
-from digest_bot.filters import recent_items, select_relevant
+from digest_bot.filters import cluster_duplicates, recent_items, select_relevant
 from digest_bot.models import CycleResult, NewsItem
 from digest_bot.publisher.base import Publisher
 from digest_bot.summarizer.base import Summarizer
@@ -92,14 +92,16 @@ class DigestPipeline:
         relevant, _ = select_relevant(collected, self._keywords)
         new_items = await asyncio.to_thread(self._store.filter_new, relevant)
         fresh = recent_items(new_items, self._max_item_age)
-        posts = self._select_posts(fresh)
+        unique, duplicates = cluster_duplicates(fresh)
+        posts = self._select_posts(unique)
         selected = [item for _, items in posts for item in items]
 
         logger.info(
-            "cycle_collected collected=%d relevant=%d new=%d selected=%d posts=%d",
+            "cycle_collected collected=%d relevant=%d new=%d unique=%d selected=%d posts=%d",
             len(collected),
             len(relevant),
             len(new_items),
+            len(unique),
             len(selected),
             len(posts),
         )
@@ -149,6 +151,10 @@ class DigestPipeline:
             digest = await summarizer.summarize(items)
             await publisher.publish(digest)
             await asyncio.to_thread(self._store.mark_sent, items)
+            # Свёрнутые дубликаты того же сюжета тоже закрыты этой публикацией.
+            folded = [item for published in items for item in duplicates.get(published.link, [])]
+            if folded:
+                await asyncio.to_thread(self._store.mark_sent, folded)
             tokens += digest.tokens
             published_tags.append(tag)
             logger.info("cycle_post tag=%s items=%d tokens=%d", tag, len(items), digest.tokens)

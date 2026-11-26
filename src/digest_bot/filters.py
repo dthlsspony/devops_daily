@@ -110,3 +110,98 @@ def newest_items(items: Sequence[NewsItem], limit: int | None) -> list[NewsItem]
         return list(items)
     ordered = sorted(items, key=lambda item: _aware(item.published_at or _OLDEST), reverse=True)
     return ordered[:limit]
+
+
+#: Слова, которые ничего не различают в заголовках новостей.
+_STOP_WORDS = frozenset(
+    {
+        "a",
+        "an",
+        "and",
+        "as",
+        "at",
+        "be",
+        "by",
+        "for",
+        "from",
+        "in",
+        "is",
+        "of",
+        "on",
+        "or",
+        "the",
+        "to",
+        "with",
+        "after",
+        "its",
+        "it",
+        "new",
+        "now",
+        "how",
+        "why",
+        "what",
+        "who",
+        "amid",
+        "via",
+        "that",
+        "this",
+        "but",
+        "not",
+        "you",
+        "your",
+    }
+)
+
+#: Насколько похожие заголовки считать одним сюжетом (коэффициент Жаккара).
+DUPLICATE_SIMILARITY = 0.6
+
+
+def _title_tokens(title: str) -> set[str]:
+    """Значимые слова заголовка."""
+    words = re.findall(r"[a-z0-9]+", title.lower())
+    return {word for word in words if word not in _STOP_WORDS and len(word) > 2}
+
+
+def _similarity(first: set[str], second: set[str]) -> float:
+    """Коэффициент Жаккара двух множеств слов."""
+    union = first | second
+    if not union:
+        return 0.0
+    return len(first & second) / len(union)
+
+
+def cluster_duplicates(
+    items: Sequence[NewsItem], threshold: float = DUPLICATE_SIMILARITY
+) -> tuple[list[NewsItem], dict[str, list[NewsItem]]]:
+    """Свернуть новости об одном сюжете, оставленных разными изданиями.
+
+    Один сюжет часто выходит в двух лентах (разные ссылки, разные теги) — без
+    свёртки он публикуется дважды, и читатель видит одну новость в двух
+    постах. Свертываются **только новости из разных источников**: внутри одной
+    ленты похожие заголовки обычно означают разные новости (ежедневные сводки
+    CISA, advisory по разным вендорам).
+
+    Возвращает оставшиеся новости и отображение «оставленная → свёрнутые».
+    """
+    ordered = sorted(items, key=lambda item: _aware(item.published_at or _OLDEST), reverse=True)
+    kept: list[NewsItem] = []
+    kept_tokens: list[set[str]] = []
+    duplicates: dict[str, list[NewsItem]] = {}
+
+    for item in ordered:
+        tokens = _title_tokens(item.title)
+        duplicate_of = ""
+        if len(tokens) >= 3:
+            for index, other in enumerate(kept):
+                if other.source == item.source:
+                    continue
+                if _similarity(tokens, kept_tokens[index]) >= threshold:
+                    duplicate_of = other.link
+                    break
+        if duplicate_of:
+            duplicates.setdefault(duplicate_of, []).append(item)
+            continue
+        kept.append(item)
+        kept_tokens.append(tokens)
+
+    return kept, duplicates

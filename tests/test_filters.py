@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from digest_bot.filters import (
+    cluster_duplicates,
     compile_keywords,
     filter_items,
     matches_keywords,
@@ -183,3 +184,83 @@ def test_newest_items_without_limit_keep_order() -> None:
 
     assert newest_items(items, None) == items
     assert newest_items(items, 5) == items
+
+
+def _dated_item(title: str, source: str, link: str) -> NewsItem:
+    return NewsItem(
+        source=source,
+        title=title,
+        link=link,
+        summary="",
+        published_at=datetime(2026, 1, 15, tzinfo=UTC),
+    )
+
+
+def test_same_story_from_two_outlets_is_clustered() -> None:
+    first = _dated_item(
+        "1Password Hacked, Customer Data and Source Code Stolen in GitHub Account Breach",
+        "thehackernews",
+        "https://thehackernews.com/1password.html",
+    )
+    second = _dated_item(
+        "1Password customer data stolen after employee GitHub account breach",
+        "bleepingcomputer",
+        "https://www.bleepingcomputer.com/1password",
+    )
+
+    kept, duplicates = cluster_duplicates([first, second])
+
+    assert kept == [first]
+    assert duplicates == {first.link: [second]}
+
+
+def test_same_source_similar_titles_are_not_clustered() -> None:
+    # Внутри одной ленты похожие заголовки — это разные новости:
+    # ежедневные сводки CISA или advisory по разным вендорам.
+    first = _dated_item(
+        "CISA Adds Ten Known Exploited Vulnerabilities to Catalog",
+        "cisa",
+        "https://www.cisa.gov/alert-1",
+    )
+    second = _dated_item(
+        "CISA Adds Two Known Exploited Vulnerabilities to Catalog",
+        "cisa",
+        "https://www.cisa.gov/alert-2",
+    )
+
+    kept, duplicates = cluster_duplicates([first, second])
+
+    assert kept == [first, second]
+    assert duplicates == {}
+
+
+def test_different_stories_are_not_clustered() -> None:
+    first = _dated_item(
+        "Critical RCE in Drupal installer", "thehackernews", "https://example.com/1"
+    )
+    second = _dated_item(
+        "Bots exploit leaked AWS key from Docker image", "helpnetsecurity", "https://example.com/2"
+    )
+
+    kept, duplicates = cluster_duplicates([first, second])
+
+    assert kept == [first, second]
+    assert duplicates == {}
+
+
+def test_cluster_keeps_the_newest_of_the_duplicates() -> None:
+    older = _dated_item(
+        "Kubernetes API server flaw patched", "thehackernews", "https://example.com/old"
+    )
+    newer = NewsItem(
+        source="bleepingcomputer",
+        title="Kubernetes API server flaw patched",
+        link="https://example.com/new",
+        summary="",
+        published_at=datetime(2026, 1, 16, tzinfo=UTC),
+    )
+
+    kept, duplicates = cluster_duplicates([older, newer])
+
+    assert kept == [newer]
+    assert duplicates == {newer.link: [older]}

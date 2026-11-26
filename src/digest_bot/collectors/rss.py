@@ -32,8 +32,11 @@ _TRACKING_PARAMS = frozenset({"fbclid", "gclid", "mc_cid", "mc_eid"})
 def canonical_link(url: str) -> str:
     """Привести URL к каноническому виду (ключ дедупликации).
 
-    Убираются якорь, трекинговые параметры и завершающий слеш; схема и хост
-    приводятся к нижнему регистру.
+    Убираются якорь, трекинговые параметры и завершающий слеш; схема
+    приводится к https, а префикс ``www.`` отбрасывается. Иначе одна и та же
+    статья, на которую сослались как ``http://www.example.com/a`` и как
+    ``https://example.com/a``, получила бы два разных ключа дедупликации и
+    попала бы в два тега.
     """
     cleaned = url.strip()
     if not cleaned:
@@ -45,19 +48,21 @@ def canonical_link(url: str) -> str:
     if not parts.scheme or not parts.netloc:
         return cleaned
     try:
-        netloc = parts.netloc.lower()
+        host = parts.hostname or ""
         port = parts.port
     except ValueError:
         return cleaned
-    if port is not None:
-        netloc = f"{netloc}:{port}"
+    if host.startswith("www."):
+        host = host[4:]
+    netloc = host if port is None else f"{host}:{port}"
     query = [
         (key, value)
         for key, value in parse_qsl(parts.query, keep_blank_values=True)
         if not key.lower().startswith("utm_") and key.lower() not in _TRACKING_PARAMS
     ]
     path = parts.path.rstrip("/") or "/"
-    return urlunsplit((parts.scheme.lower(), netloc, path, urlencode(query), ""))
+    scheme = "https" if parts.scheme.lower() in ("http", "https") else parts.scheme.lower()
+    return urlunsplit((scheme, netloc, path, urlencode(query), ""))
 
 
 def clean_text(value: Any) -> str:

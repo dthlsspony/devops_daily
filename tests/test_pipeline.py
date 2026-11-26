@@ -489,3 +489,54 @@ async def test_dry_run_reports_posts_per_tag(tmp_path: Path) -> None:
     # Обе новости по одной: порядок тегов при равенстве — алфавитный.
     assert result.tags == ("nodejs", "php")
     assert {item.tag for item in result.items} == {"php", "nodejs"}
+
+
+async def test_folded_duplicate_is_marked_with_its_keeper(tmp_path: Path) -> None:
+    # Один сюжет в двух изданиях: публикуется один раз, второй закрывается
+    # вместе с ним — иначе он всплыл бы в следующем цикле.
+    kept = _tagged("thehackernews", "1Password customer data stolen after GitHub breach", 1)
+    duplicate = _tagged(
+        "bleepingcomputer", "1Password customer data stolen after employee GitHub breach", 2
+    )
+    store = _open_store(tmp_path)
+    publisher = FakePublisher()
+    pipeline = DigestPipeline(
+        collector=FakeCollector([kept, duplicate]),
+        store=store,
+        summarizer=FakeSummarizer(),
+        publisher=publisher,
+        keywords=["breach"],
+        tag_rules=TEST_TAG_RULES,
+        min_news_threshold=1,
+    )
+
+    result = await pipeline.run_cycle()
+
+    assert result.selected == 1
+    assert len(publisher.digests) == 1
+    # Дубликат помечен обработанным вместе с основной новостью.
+    assert store.filter_new([kept, duplicate]) == []
+
+
+async def test_duplicate_is_kept_when_nothing_published(tmp_path: Path) -> None:
+    # Пока пост не опубликован, дубликат остаётся необработанным.
+    kept = _tagged("thehackernews", "1Password customer data stolen after GitHub breach", 1)
+    duplicate = _tagged(
+        "bleepingcomputer", "1Password customer data stolen after employee GitHub breach", 2
+    )
+    store = _open_store(tmp_path)
+    publisher = FakePublisher()
+    pipeline = DigestPipeline(
+        collector=FakeCollector([kept, duplicate]),
+        store=store,
+        summarizer=FakeSummarizer(),
+        publisher=publisher,
+        keywords=["breach"],
+        tag_rules=TEST_TAG_RULES,
+        min_news_threshold=5,
+    )
+
+    result = await pipeline.run_cycle()
+
+    assert result.published is False
+    assert store.filter_new([kept, duplicate]) == [kept, duplicate]
