@@ -1,0 +1,34 @@
+# --- secrets -------------------------------------------------------------
+.env
+.env.*
+!.env.example
+
+# --- runtime data --------------------------------------------------------
+data/
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+logs/
+
+# --- python --------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# --- tooling caches ------------------------------------------------------
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- editors / OS --------------------------------------------------------
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

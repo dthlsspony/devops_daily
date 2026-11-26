@@ -1,0 +1,22 @@
+name: ci
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  quality:
+    name: lint + types + tests (docker)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Те же проверки, что и локально: ruff check, ruff format --check, mypy, pytest.
+      - name: Run CI checks inside Docker
+        run: bash dbot.sh ci
+
+      - name: Dry run without secrets (collects real RSS feeds, publishes nothing)
+        run: bash dbot.sh dry-run

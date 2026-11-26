@@ -1,0 +1,206 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0"
+        xmlns:content="http://purl.org/rss/1.0/modules/content/"
+        xmlns:wfw="http://wellformedweb.org/CommentAPI/"
+        xmlns:dc="http://purl.org/dc/elements/1.1/"
+        xmlns:atom="http://www.w3.org/2005/Atom"
+        >
+
+<channel>
+        <title>BleepingComputer</title>
+
+        <link>https://www.bleepingcomputer.com/</link>
+        <description>BleepingComputer - All Stories</description>
+        <pubDate>Thu, 26 Nov 2026 04:35:20 GMT</pubDate>
+        <generator>https://www.bleepingcomputer.com/</generator>
+        <language>en</language>
+        <atom:link href="https://www.bleepingcomputer.com/feed/" rel="self" type="application/rss+xml" />
+        
+ <item>
+        <title>Palo Alto Networks warns of Fragnesia flaw exploited in PAN-OS attacks</title>
+        <link>https://www.bleepingcomputer.com/news/security/palo-alto-networks-warns-of-fragnesia-flaw-exploited-in-pan-os-attacks/</link>
+        <pubDate>Wed, 25 Nov 2026 17:05:09 -0500</pubDate>
+        <dc:creator>Bill Toulas</dc:creator>
+        
+        <category><![CDATA[Security]]></category>
+
+        <guid>https://www.bleepingcomputer.com/news/security/palo-alto-networks-warns-of-fragnesia-flaw-exploited-in-pan-os-attacks/</guid>
+        <description><![CDATA[Threat actors are chaining exploits for the PHP2Shell and Fragnesia vulnerabilities to target Palo Alto Networks devices with management interfaces exposed to the internet. [...]]]></description>
+ </item>
+
+ <item>
+        <title>1Password customer data stolen after employee GitHub account breach</title>
+        <link>https://www.bleepingcomputer.com/news/security/1password-customer-data-stolen-after-employee-github-account-breach/</link>
+        <pubDate>Wed, 25 Nov 2026 16:33:33 -0500</pubDate>
+        <dc:creator>Lawrence Abrams</dc:creator>
+        
+        <category><![CDATA[Security]]></category>
+
+        <guid>https://www.bleepingcomputer.com/news/security/1password-customer-data-stolen-after-employee-github-account-breach/</guid>
+        <description><![CDATA[1Password has disclosed a data breach after a an employee's corporate GitHub account was hacked and used to deploy malicious code to the company's backend services to steal customer data. [...]]]></description>
+ </item>
+
+ <item>
+        <title>Italy and Switzerland warn of autonomous AI-driven cyberattacks</title>
+        <link>https://www.bleepingcomputer.com/news/security/italy-and-switzerland-warn-of-autonomous-ai-driven-cyberattacks/</link>
+        <pubDate>Wed, 25 Nov 2026 14:39:31 -0500</pubDate>
+        <dc:creator>Bill Toulas</dc:creator>
+        
+        <category><![CDATA[Security]]></category>
+
+        <category><![CDATA[Artificial Intelligence]]></category>
+
+        <guid>https://www.bleepingcomputer.com/news/security/italy-and-switzerland-warn-of-autonomous-ai-driven-cyberattacks/</guid>
+        <description><![CDATA[Swiss and Italian cybersecurity agencies are warning about automated cyberattacks powered by AI agents targeting organizations in the critical infrastructure sector. [...]]]></description>
+ </item>
+
+ <item>
+        <title>CISA warns of critical unpatched flaw in Danfoss refrigeration controllers</title>
+        <link>https://www.bleepingcomputer.com/news/security/cisa-warns-of-critical-unpatched-flaw-in-danfoss-refrigeration-controllers/</link>
+        <pubDate>Wed, 25 Nov 2026 11:13:40 -0500</pubDate>
+        <dc:creator>Bill Toulas</dc:creator>
+        
+        <category><![CDATA[Security]]></category>
+
+        <guid>https://www.bleepingcomputer.com/news/security/cisa-warns-of-critical-unpatched-flaw-in-danfoss-refrigeration-controllers/</guid>
+        <description><![CDATA[The U.S. Cybersecurity and Infrastructure Security Agency (CISA) is warning about a critical vulnerability in Danfoss AK-SM 8xxA Series controllers used by food retailers to manage commercial refrigeration, HVAC, and lighting systems. [...]]]></description>
+ </item>
+
+ <item>
+        <title>More Pentests Without More Pentesters: Where AI Safely Helps</title>
+        <link>https://www.bleepingcomputer.com/news/security/more-pentests-without-more-pentesters-where-ai-safely-helps/</link>
+        <pubDate>Wed, 25 Nov 2026 10:00:10 -0500</pubDate>
+        <dc:creator>Sponsored by PenTestPad</dc:creator>
+        
+        <category><![CDATA[Security]]></category>
+
+        <guid>https://www.bleepingcomputer.com/news/security/more-pentests-without-more-pentesters-where-ai-safely-helps/</guid>
+        <description><![CDATA[Penetration testers spend a significant portion of their engagements on documentation, reporting, and other tasks outside of testing. PentestPad explains how AI can reduce this workload, help teams handle more engagements, and keep sensitive client data within their own infrastructure. [...]]]></description>
+ </item>
+
+ <item>
+        <title>InfraTrust warns of exploited supply chain flaws in network appliances</title>
+        <link>https://www.bleepingcomputer.com/news/security/infratrust-warns-of-exploited-supply-chain-flaws-in-network-appliances/</link>
+        <pubDate>Wed, 25 Nov 2026 10:00:00 -0500</pubDate>
+        <dc:creator>Lawrence Abrams</dc:creator>
+        
+        <category><![CDATA[Security]]></category>
+
+        <guid>https://www.bleepingcomputer.com/news/security/infratrust-warns-of-exploited-supply-chain-flaws-in-network-appliances/</guid>
+        <description><![CDATA[Eclypsium's November InfraTrust report warns that most infrastructure security advisories addressing exploited vulnerabilities over the past month involve flaws in third-party software bundled into products rather than code developed by the vendors themselves. [...]]]></description>
+ </item>
+
+ <item>
+        <title>Microsoft fixes Microsoft 365 bug blocking access to Office apps</title>
+        <link>https://www.bleepingcomputer.com/news/microsoft/microsoft-fixes-blank-dialog-that-made-microsoft-365-office-apps-unusable/</link>
+        <pubDate>Wed, 25 Nov 2026 06:16:32 -0500</pubDate>
+        <dc:creator>Sergiu Gatlan</dc:creator>
+        
+        <category><![CDATA[Microsoft]]></category>
+
+        <guid>https://www.bleepingcomputer.com/news/microsoft/microsoft-fixes-blank-dialog-that-made-microsoft-365-office-apps-unusable/</guid>
+        <description><![CDATA[Earlier this week, Microsoft resolved a known issue that was preventing some Microsoft 365 customers from accessing Office applications. [...]]]></description>
+ </item>
+
+ <item>
+        <title>Hackers now exploit critical Drupal RCE flaw to hijack sites</title>
+        <link>https://www.bleepingcomputer.com/news/security/hackers-now-exploit-critical-drupal-rce-flaw-to-hijack-sites/</link>
+        <pubDate>Wed, 25 Nov 2026 05:10:20 -0500</pubDate>
+        <dc:creator>Sergiu Gatlan</dc:creator>
+        
+        <category><![CDATA[Security]]></category>
+
+        <guid>https://www.bleepingcomputer.com/news/security/hackers-now-exploit-critical-drupal-rce-flaw-to-hijack-sites/</guid>
+        <description><![CDATA[The Drupal security team has confirmed that a critical vulnerability that lets attackers hijack unpatched sites has been actively exploited since at least Thursday. [...]]]></description>
+ </item>
+
+ <item>
+        <title>Microsoft confirms authentication issues after November updates</title>
+        <link>https://www.bleepingcomputer.com/news/microsoft/microsoft-confirms-authentication-issues-after-november-updates/</link>
+        <pubDate>Wed, 25 Nov 2026 04:02:57 -0500</pubDate>
+        <dc:creator>Sergiu Gatlan</dc:creator>
+        
+        <category><![CDATA[Microsoft]]></category>
+
+        <category><![CDATA[Security]]></category>
+
+        <guid>https://www.bleepingcomputer.com/news/microsoft/microsoft-confirms-authentication-issues-after-november-updates/</guid>
+        <description><![CDATA[Microsoft has confirmed that customers may experience authentication issues after installing November security updates that address a high-severity remote code execution vulnerability. [...]]]></description>
+ </item>
+
+ <item>
+        <title>Hackers reportedly breached CIA intelligence analysis system</title>
+        <link>https://www.bleepingcomputer.com/news/security/hackers-reportedly-breached-cia-intelligence-analysis-system/</link>
+        <pubDate>Wed, 25 Nov 2026 02:45:03 -0500</pubDate>
+        <dc:creator>Sergiu Gatlan</dc:creator>
+        
+        <category><![CDATA[Security]]></category>
+
+        <guid>https://www.bleepingcomputer.com/news/security/hackers-reportedly-breached-cia-intelligence-analysis-system/</guid>
+        <description><![CDATA[Unknown attackers have reportedly breached an open-source intelligence analysis system at the US Central Intelligence Agency (CIA) [...]]]></description>
+ </item>
+
+ <item>
+        <title>Rackspace shuts down Spot cloud platform after security breach</title>
+        <link>https://www.bleepingcomputer.com/news/security/rackspace-shuts-down-spot-cloud-platform-after-security-breach/</link>
+        <pubDate>Tue, 24 Nov 2026 16:37:30 -0500</pubDate>
+        <dc:creator>Lawrence Abrams</dc:creator>
+        
+        <category><![CDATA[Security]]></category>
+
+        <guid>https://www.bleepingcomputer.com/news/security/rackspace-shuts-down-spot-cloud-platform-after-security-breach/</guid>
+        <description><![CDATA[Rackspace is shutting down its Rackspace Spot cloud platform after a security breach allowed hackers to access customer Kubernetes clusters and secrets, giving customers until December 8 to migrate their services and download their data. [...]]]></description>
+ </item>
+
+ <item>
+        <title>New Inception extortion gang launches large-scale vishing campaign</title>
+        <link>https://www.bleepingcomputer.com/news/security/new-inception-extortion-gang-launches-large-scale-vishing-campaign/</link>
+        <pubDate>Tue, 24 Nov 2026 15:21:20 -0500</pubDate>
+        <dc:creator>Bill Toulas</dc:creator>
+        
+        <category><![CDATA[Security]]></category>
+
+        <guid>https://www.bleepingcomputer.com/news/security/new-inception-extortion-gang-launches-large-scale-vishing-campaign/</guid>
+        <description><![CDATA[A newly formed data extortion group named 'Inception' has been linked to a large-scale campaign that targets single sign-on (SSO) credentials of multiple global brands and firms. [...]]]></description>
+ </item>
+
+ <item>
+        <title>Turnitin discloses cyberattack affecting customer-facing systems</title>
+        <link>https://www.bleepingcomputer.com/news/security/turnitin-discloses-cyberattack-affecting-customer-facing-systems/</link>
+        <pubDate>Tue, 24 Nov 2026 13:59:52 -0500</pubDate>
+        <dc:creator>Bill Toulas</dc:creator>
+        
+        <category><![CDATA[Security]]></category>
+
+        <category><![CDATA[Education]]></category>
+
+        <guid>https://www.bleepingcomputer.com/news/security/turnitin-discloses-cyberattack-affecting-customer-facing-systems/</guid>
+        <description><![CDATA[Turnitin disclosed via a statement from its CEO, Chris Caren, that it recently detected unauthorized activity involving certain customer-facing systems. [...]]]></description>
+ </item>
+
+ <item>
+        <title>Radware discloses breach exposing customer cloud access keys</title>
+        <link>https://www.bleepingcomputer.com/news/security/radware-discloses-breach-exposing-customer-cloud-access-keys/</link>
+        <pubDate>Tue, 24 Nov 2026 12:49:05 -0500</pubDate>
+        <dc:creator>Sergiu Gatlan</dc:creator>
+        
+        <category><![CDATA[Security]]></category>
+
+        <guid>https://www.bleepingcomputer.com/news/security/radware-discloses-breach-exposing-customer-cloud-access-keys/</guid>
+        <description><![CDATA[Cybersecurity company Radware says attackers gained access to some of its customers' account details and cloud access keys through an unsecured internal Cloud WAF (Web Application Firewall) management API that was left exposed online. [...]]]></description>
+ </item>
+
+ <item>
+        <title>ShinyHunters claims to return after FBI arrests, uses old PGP keys as proof</title>
+        <link>https://www.bleepingcomputer.com/news/security/shinyhunters-resurfaces-after-fbi-arrests-uses-old-pgp-keys-as-proof/</link>
+        <pubDate>Tue, 24 Nov 2026 11:30:19 -0500</pubDate>
+        <dc:creator>Lawrence Abrams</dc:creator>
+        
+        <category><![CDATA[Security]]></category>
+
+        <guid>https://www.bleepingcomputer.com/news/security/shinyhunters-resurfaces-after-fbi-arrests-uses-old-pgp-keys-as-proof/</guid>
+        <description><![CDATA[The ShinyHunters extortion gang claims to have returned in posts on a new data leak site after a series of arrests over the past two months targeting alleged members. [...]]]></description>
+ </item>
+
+</channel>
+</rss>

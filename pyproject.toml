@@ -1,0 +1,105 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "security-digest-bot"
+version = "0.1.0"
+description = "Дайджест новостей по информационной безопасности: RSS -> фильтр -> дедуп -> GigaChat -> Telegram"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "devops_daily" }]
+keywords = ["security", "digest", "rss", "gigachat", "telegram"]
+
+dependencies = [
+    "aiogram>=3.13,<4",
+    "apscheduler>=3.10,<4",
+    "certifi>=2024.2.2",
+    "feedparser>=6.0.11",
+    "gigachat>=0.2.4,<0.3",
+    "httpx>=0.27,<0.29",
+    "pydantic>=2.7,<3",
+    "pydantic-settings>=2.2,<3",
+    "tenacity>=8.2,<10",
+]
+
+[project.optional-dependencies]
+dev = [
+    "mypy>=1.10,<2",
+    "pytest>=8.0,<9",
+    "pytest-asyncio>=0.23,<1",
+    "respx>=0.21,<1",
+    "ruff>=0.5,<1",
+]
+
+[project.scripts]
+digest-bot = "digest_bot.__main__:main"
+
+[project.urls]
+Homepage = "https://example.invalid/security-digest-bot"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+# Корневой сертификат Минцифры, нужный для TLS к OAuth-серверу GigaChat.
+digest_bot = ["certs/*.pem"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # bugbear
+    "C4",  # comprehensions
+    "SIM", # simplify
+    "T20", # no print()
+    "ANN", # annotations
+    "ASYNC", # async correctness
+    "PTH", # pathlib
+    "RUF", # ruff specific
+]
+ignore = [
+    "ANN401",  # Any is allowed on protocol boundaries
+    "RUF001",  # Cyrillic text in Russian messages is not "ambiguous"
+    "RUF002",
+    "RUF003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["ANN401"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["digest_bot"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unreachable = true
+show_error_codes = true
+plugins = []
+
+[[tool.mypy.overrides]]
+# Библиотеки без py.typed / stubs.
+module = ["feedparser.*", "apscheduler.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = "-ra --strict-markers"
+filterwarnings = ["error::DeprecationWarning:digest_bot.*"]
