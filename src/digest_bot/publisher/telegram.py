@@ -1,8 +1,11 @@
 """Публикация дайджеста в Telegram.
 
+На каждый тег — отдельный пост: заголовок с иконкой и названием тега,
+реферат по нему, подвал со счётчиком и источниками.
+
 Сообщения отправляются в ``MarkdownV2``: текст реферата переводится в
 безопасный формат (экранирование плюс поддержка подзаголовков, списков и
-ссылок), а длинные дайджесты режутся на части по 4096 символов.
+ссылок), а длинные посты режутся на части по 4096 символов.
 """
 
 from __future__ import annotations
@@ -15,13 +18,14 @@ from typing import Any, Protocol
 from aiogram.exceptions import TelegramBadRequest
 
 from digest_bot.models import Digest
+from digest_bot.tags import DEFAULT_TAG, tag_icon
 
 logger = logging.getLogger(__name__)
 
 TELEGRAM_MESSAGE_LIMIT = 4096
 PARSE_MODE_MARKDOWN_V2 = "MarkdownV2"
-HEADER_TEXT = "Дайджест по информационной безопасности"
-HEADER_ICON = "🔐"
+#: Сколько источников перечислять в подвале поста.
+MAX_SOURCES_IN_FOOTER = 3
 
 #: Символы, которые Telegram считает специальными в MarkdownV2.
 _SPECIALS_RE = re.compile(r"([_*\[\]()~`>#+\-=|{}.!])")
@@ -103,6 +107,17 @@ def strip_markdown_v2(text: str) -> str:
     """Приблизительно вернуть MarkdownV2 к обычному тексту (fallback)."""
     plain = _UNESCAPE_RE.sub(r"\1", text)
     return plain.replace("•", "-")
+
+
+def _sources_text(sources: tuple[str, ...]) -> str:
+    """Источники для подвала поста: первые несколько и счётчик остальных."""
+    if not sources:
+        return "Источники: нет данных"
+    listed = list(sources[:MAX_SOURCES_IN_FOOTER])
+    text = ", ".join(listed)
+    if len(sources) > len(listed):
+        text = f"{text} и ещё {len(sources) - len(listed)}"
+    return f"Источники: {text}"
 
 
 def utf16_length(text: str) -> int:
@@ -200,13 +215,15 @@ class TelegramPublisher:
         logger.info("publish_finished parts=%d", len(chunks))
 
     def _compose(self, digest: Digest) -> str:
-        """Собрать итоговое сообщение из реферата."""
-        header = f"{HEADER_ICON} {escape_markdown_v2(HEADER_TEXT)}"
+        """Собрать итоговое сообщение: заголовок с тегом, реферат и подвал."""
+        tag = digest.tag or DEFAULT_TAG
+        header = f"{tag_icon(tag)} {escape_markdown_v2(tag)}"
         footer = escape_markdown_v2(
-            f"Новостей: {digest.item_count} · Источников: {len(digest.sources)}"
+            f"Новостей: {digest.item_count} · {_sources_text(digest.sources)}"
         )
+        hashtag = escape_markdown_v2(f"#{tag}")
         body = to_markdown_v2(digest.text)
-        return f"{header}\n\n{body}\n\n{footer}"
+        return f"{header}\n\n{body}\n\n{footer}\n{hashtag}"
 
     async def _send(self, chunk: str) -> None:
         """Отправить одну часть; если Telegram не разобрал разметку — как plain text."""

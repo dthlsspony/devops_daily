@@ -52,8 +52,14 @@ class RejectingBot(FakeBot):
         return await super().send_message(chat_id, text, parse_mode)
 
 
-def _digest(text: str, count: int = 1) -> Digest:
-    return Digest(text=text, item_count=count, sources=("thehackernews",), tokens=10)
+def _digest(text: str, count: int = 1, tag: str = "") -> Digest:
+    return Digest(
+        text=text,
+        item_count=count,
+        sources=("thehackernews",),
+        tokens=10,
+        tag=tag,
+    )
 
 
 async def test_publish_sends_single_message() -> None:
@@ -70,18 +76,18 @@ async def test_publish_sends_single_message() -> None:
     assert "• пункт" in text
 
 
-async def test_long_digest_is_split_in_two_messages() -> None:
+async def test_long_digest_is_split_into_several_messages() -> None:
     bot = FakeBot()
     publisher = TelegramPublisher(bot, "-100123", rate_limit_delay=0)
 
     await publisher.publish(_digest("a" * 5000))
 
-    assert len(bot.messages) == 2
+    assert len(bot.messages) >= 2
     assert all(utf16_length(text) <= 4096 for _, text, _ in bot.messages)
     # Заголовок не уезжает отдельным пустым сообщением.
-    assert bot.messages[0][1].startswith("🔐")
+    assert bot.messages[0][1].startswith("📰")
     assert "a" * 100 in bot.messages[0][1]
-    assert bot.messages[1][1].rstrip().endswith("Источников: 1")
+    assert "#прочее" in bot.messages[-1][1]
 
 
 async def test_markdown_is_rejected_fallback_to_plain_text() -> None:
@@ -203,3 +209,42 @@ def test_strip_markdown_v2_returns_readable_text() -> None:
 def test_split_message_rejects_invalid_limit(limit: int) -> None:
     with pytest.raises(ValueError):
         split_message("text", limit=limit)
+
+
+async def test_post_header_shows_the_tag() -> None:
+    bot = FakeBot()
+    publisher = TelegramPublisher(bot, "-100123", rate_limit_delay=0)
+
+    await publisher.publish(_digest("## Главное\n- пункт", count=3, tag="php"))
+
+    text = bot.messages[0][1]
+    assert text.startswith("🐘 php")
+    assert "Новостей: 3" in text
+    assert "#php" in text
+
+
+async def test_post_footer_lists_sources() -> None:
+    bot = FakeBot()
+    publisher = TelegramPublisher(bot, "-100123", rate_limit_delay=0)
+    digest = Digest(
+        text="- пункт",
+        item_count=1,
+        sources=("thehackernews", "bleepingcomputer", "snyk", "cisa"),
+        tag="supply-chain",
+    )
+
+    await publisher.publish(digest)
+
+    text = bot.messages[0][1]
+    assert "Источники: thehackernews, bleepingcomputer, snyk и ещё 1" in text
+    # В MarkdownV2 спецсимволы экранированы — проверяем видимый результат.
+    assert strip_markdown_v2(text).rstrip().endswith("#supply-chain")
+
+
+async def test_post_without_tag_uses_the_default_one() -> None:
+    bot = FakeBot()
+    publisher = TelegramPublisher(bot, "-100123", rate_limit_delay=0)
+
+    await publisher.publish(_digest("- пункт"))
+
+    assert bot.messages[0][1].startswith("📰 прочее")

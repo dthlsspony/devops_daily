@@ -7,9 +7,15 @@ from pathlib import Path
 
 import pytest
 
+from digest_bot.config import TagRule
 from digest_bot.dedup import SQLiteStore
 from digest_bot.models import Digest, NewsItem
-from digest_bot.pipeline import DigestPipeline
+from digest_bot.pipeline import (
+    DEFAULT_MAX_ITEMS_PER_TAG,
+    DEFAULT_MAX_POSTS_PER_CYCLE,
+    DEFAULT_MIN_ITEMS_PER_TAG,
+    DigestPipeline,
+)
 
 
 class FakeCollector:
@@ -37,6 +43,7 @@ class FakeSummarizer:
             item_count=len(items),
             sources=("thehackernews",),
             tokens=42,
+            tag=items[0].tag if items else "",
         )
 
 
@@ -86,6 +93,13 @@ def _open_store(tmp_path: Path) -> SQLiteStore:
     return store
 
 
+#: Правила тегирования для тестов: php по слову "php", nodejs по источнику.
+TEST_TAG_RULES = (
+    TagRule(tag="php", keywords=["php"]),
+    TagRule(tag="nodejs", sources=["nodejs"]),
+)
+
+
 def _pipeline(
     tmp_path: Path,
     collector: FakeCollector,
@@ -94,6 +108,10 @@ def _pipeline(
     *,
     threshold: int = 2,
     dry_run: bool = False,
+    tag_rules: tuple[TagRule, ...] = TEST_TAG_RULES,
+    max_items_per_tag: int | None = DEFAULT_MAX_ITEMS_PER_TAG,
+    max_posts_per_cycle: int | None = DEFAULT_MAX_POSTS_PER_CYCLE,
+    min_items_per_tag: int = DEFAULT_MIN_ITEMS_PER_TAG,
 ) -> DigestPipeline:
     return DigestPipeline(
         collector=collector,
@@ -101,7 +119,11 @@ def _pipeline(
         summarizer=summarizer,
         publisher=publisher,
         keywords=["rce"],
+        tag_rules=tag_rules,
         min_news_threshold=threshold,
+        max_items_per_tag=max_items_per_tag,
+        max_posts_per_cycle=max_posts_per_cycle,
+        min_items_per_tag=min_items_per_tag,
         dry_run=dry_run,
     )
 
@@ -221,7 +243,8 @@ async def test_dry_run_returns_items_without_external_calls(tmp_path: Path) -> N
     assert summarizer.calls == []
     assert result.published is False
     assert result.skipped_reason == "dry_run"
-    assert result.items == tuple(_items(3))
+    assert [item.link for item in result.items] == [item.link for item in _items(3)]
+    assert {item.tag for item in result.items} == {"прочее"}
     # Как в рабочем режиме, новости помечаются — второй прогон покажет 0 новых.
     second = await pipeline.run_cycle()
     assert second.new_items == 0
@@ -271,7 +294,8 @@ async def test_stale_items_are_not_digestible(tmp_path: Path) -> None:
 
     assert result.new_items == 3
     assert result.selected == 0
-    assert result.skipped_reason == "threshold"
+    # Новости есть, но все несвежие — публиковать нечего.
+    assert result.skipped_reason == "nothing_to_publish"
     assert publisher.digests == []
 
 
@@ -296,7 +320,7 @@ async def test_digest_is_capped_to_freshest_items(tmp_path: Path) -> None:
         publisher=publisher,
         keywords=["rce"],
         min_news_threshold=2,
-        max_items_per_digest=3,
+        max_items_per_tag=3,
     )
 
     result = await pipeline.run_cycle()
@@ -326,3 +350,142 @@ async def test_unrelated_news_are_filtered_out(tmp_path: Path) -> None:
     assert result.matched == 0
     assert publisher.digests == []
     assert result.skipped_reason == "threshold"
+
+
+def _tagged(source: str, title: str, index: int) -> NewsItem:
+    """Новость с заданным источником и заголовком."""
+    return NewsItem(
+        source=source,
+        title=title,
+        link=f"https://example.com/{source}/{index}",
+        summary="exploit",
+        published_at=datetime.now(UTC) - timedelta(hours=index),
+    )
+
+
+async def test_each_tag_gets_its_own_post(tmp_path: Path) -> None:
+    items = [
+        _tagged("thehackernews", "PHP session RCE allows code execution", 1),
+        _tagged("thehackernews", "PHP image parser RCE in image upload", 2),
+        _tagged("nodejs", "Critical RCE in parser", 3),
+    ]
+    summarizer = FakeSummarizer()
+    publisher = FakePublisher()
+    pipeline = _pipeline(tmp_path, FakeCollector(items), summarizer, publisher, threshold=2)
+
+    result = await pipeline.run_cycle()
+
+    # Два поста: по тегу php (2 новости) и по тегу nodejs (1 новость).
+    assert result.posts == 2
+    assert result.tags == ("php", "nodejs")
+    assert len(publisher.digests) == 2
+    assert [digest.tag for digest in publisher.digests] == ["php", "nodejs"]
+    assert publisher.digests[0].item_count == 2
+    assert publisher.digests[1].item_count == 1
+
+
+async def test_news_is_published_exactly_once(tmp_path: Path) -> None:
+    items = [
+        _tagged("thehackernews", "PHP session RCE allows code execution", 1),
+        _tagged("thehackernews", "PHP image parser RCE in image upload", 2),
+        _tagged("nodejs", "Critical RCE in parser", 3),
+    ]
+    summarizer = FakeSummarizer()
+    publisher = FakePublisher()
+    pipeline = _pipeline(tmp_path, FakeCollector(items), summarizer, publisher, threshold=2)
+
+    await pipeline.run_cycle()
+
+    published_links = [item.link for call in summarizer.calls for item in call]
+    assert len(published_links) == len(set(published_links)) == 3
+
+
+async def test_posts_per_cycle_are_capped(tmp_path: Path) -> None:
+    items = [
+        _tagged("thehackernews", "PHP session flaw allows RCE", 1),
+        _tagged("nodejs", "Critical RCE in parser", 2),
+        _tagged("thehackernews", "Another PHP flaw", 3),
+    ]
+    summarizer = FakeSummarizer()
+    publisher = FakePublisher()
+    pipeline = _pipeline(
+        tmp_path,
+        FakeCollector(items),
+        summarizer,
+        publisher,
+        threshold=1,
+        max_posts_per_cycle=1,
+    )
+
+    result = await pipeline.run_cycle()
+
+    assert result.posts == 1
+    assert len(publisher.digests) == 1
+
+
+async def test_tag_with_too_few_items_waits_for_next_cycle(tmp_path: Path) -> None:
+    items = [
+        _tagged("thehackernews", "PHP session RCE allows code execution", 1),
+        _tagged("thehackernews", "PHP image parser RCE in image upload", 2),
+        _tagged("nodejs", "Critical RCE in parser", 3),
+    ]
+    store = _open_store(tmp_path)
+    publisher = FakePublisher()
+    pipeline = DigestPipeline(
+        collector=FakeCollector(items),
+        store=store,
+        summarizer=FakeSummarizer(),
+        publisher=publisher,
+        keywords=["rce"],
+        tag_rules=TEST_TAG_RULES,
+        min_news_threshold=1,
+        min_items_per_tag=2,
+    )
+
+    result = await pipeline.run_cycle()
+
+    # Пост только у php: у nodejs одна новость, порог тега не достигнут.
+    assert result.posts == 1
+    assert result.tags == ("php",)
+    # Новость nodejs не помечена и дождётся следующего цикла.
+    assert [item.link for item in store.filter_new(items)] == [items[2].link]
+
+
+async def test_items_beyond_the_tag_limit_stay_unpublished(tmp_path: Path) -> None:
+    items = [_tagged("thehackernews", f"PHP RCE number {index}", index) for index in range(1, 5)]
+    store = _open_store(tmp_path)
+    publisher = FakePublisher()
+    pipeline = DigestPipeline(
+        collector=FakeCollector(items),
+        store=store,
+        summarizer=FakeSummarizer(),
+        publisher=publisher,
+        keywords=["rce"],
+        tag_rules=TEST_TAG_RULES,
+        min_news_threshold=1,
+        max_items_per_tag=2,
+    )
+
+    result = await pipeline.run_cycle()
+
+    assert result.selected == 2
+    assert len(store.filter_new(items)) == 2
+
+
+async def test_dry_run_reports_posts_per_tag(tmp_path: Path) -> None:
+    items = [
+        _tagged("thehackernews", "PHP session RCE allows code execution", 1),
+        _tagged("nodejs", "Critical RCE in parser", 2),
+    ]
+    publisher = FakePublisher()
+    pipeline = _pipeline(
+        tmp_path, FakeCollector(items), FakeSummarizer(), publisher, threshold=1, dry_run=True
+    )
+
+    result = await pipeline.run_cycle()
+
+    assert publisher.digests == []
+    assert result.posts == 2
+    # Обе новости по одной: порядок тегов при равенстве — алфавитный.
+    assert result.tags == ("nodejs", "php")
+    assert {item.tag for item in result.items} == {"php", "nodejs"}

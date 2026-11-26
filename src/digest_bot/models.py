@@ -15,6 +15,9 @@ class NewsItem:
     """Одна новость, собранная из RSS-ленты.
 
     ``link`` — канонический URL статьи, используется как ключ дедупликации.
+    ``tag`` — тематический тег; проставляется при группировке перед рефератом.
+    ``trusted`` — новость из официальной advisory-ленты: релевантна по теме
+    даже без слов про безопасность.
     """
 
     source: str
@@ -22,6 +25,8 @@ class NewsItem:
     link: str
     summary: str = ""
     published_at: datetime | None = None
+    tag: str = ""
+    trusted: bool = False
 
     @property
     def published_iso(self) -> str:
@@ -33,12 +38,13 @@ class NewsItem:
 
 @dataclass(frozen=True, slots=True)
 class Digest:
-    """Готовый реферат, подготовленный суммаризатором."""
+    """Готовый реферат по одному тегу."""
 
     text: str
     item_count: int
     sources: tuple[str, ...] = ()
     tokens: int = 0
+    tag: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,16 +60,18 @@ class CycleResult:
     """Итог одного цикла пайплайна.
 
     ``new_items`` — сколько новостей ещё не публиковалось (после дедупликации);
-    ``selected`` — сколько из них отобрано в дайджест (после фильтра свежести
-    и лимита за цикл); ``items`` — сами отобранные новости (заполняется
-    только в режиме ``--dry-run``).
+    ``selected`` — сколько из них ушло в посты; ``posts`` — сколько постов
+    опубликовано; ``tags`` — теги этих постов; ``items`` — сами новости
+    (заполняется только в режиме ``--dry-run``).
     """
 
     collected: int = 0
     matched: int = 0
     new_items: int = 0
     selected: int = 0
+    posts: int = 0
     published: bool = False
     tokens: int = 0
     skipped_reason: str | None = None
+    tags: tuple[str, ...] = ()
     items: tuple[NewsItem, ...] = ()

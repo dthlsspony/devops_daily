@@ -163,6 +163,7 @@ class GigaChatSummarizer:
             item_count=len(items),
             sources=sources,
             tokens=tokens,
+            tag=items[0].tag if items else "",
         )
 
     def _batches(self, items: Sequence[NewsItem]) -> list[list[NewsItem]]:

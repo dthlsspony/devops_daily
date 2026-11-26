@@ -31,7 +31,9 @@ _MANAGED_VARS = (
     "KEYWORDS",
     "MAX_ITEMS_PER_FEED",
     "MAX_ITEM_AGE_DAYS",
-    "MAX_ITEMS_PER_DIGEST",
+    "MAX_ITEMS_PER_TAG",
+    "MAX_POSTS_PER_CYCLE",
+    "MIN_ITEMS_PER_TAG",
     "GIGACHAT_VERIFY_SSL",
 )
 
@@ -158,16 +160,24 @@ def test_volume_limits_have_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert settings.max_items_per_feed == 50
     assert settings.max_item_age_days == 3
-    assert settings.max_items_per_digest == 30
+    assert settings.max_items_per_tag == 15
+    assert settings.max_posts_per_cycle == 5
+    assert settings.min_items_per_tag == 1
 
 
 def test_zero_disables_volume_limits(monkeypatch: pytest.MonkeyPatch) -> None:
-    _env(monkeypatch, MAX_ITEM_AGE_DAYS="0", MAX_ITEMS_PER_DIGEST="0")
+    _env(
+        monkeypatch,
+        MAX_ITEM_AGE_DAYS="0",
+        MAX_ITEMS_PER_TAG="0",
+        MAX_POSTS_PER_CYCLE="0",
+    )
 
     settings = _settings()
 
     assert settings.max_item_age_days is None
-    assert settings.max_items_per_digest is None
+    assert settings.max_items_per_tag is None
+    assert settings.max_posts_per_cycle is None
 
 
 @pytest.mark.parametrize(

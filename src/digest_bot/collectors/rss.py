@@ -88,7 +88,7 @@ def parse_published(entry: Any) -> datetime | None:
     return None
 
 
-def build_items(source: str, parsed: Any) -> list[NewsItem]:
+def build_items(source: str, parsed: Any, trusted: bool = False) -> list[NewsItem]:
     """Преобразовать разобранную ленту в список новостей."""
     entries = parsed.get("entries") or []
     items: list[NewsItem] = []
@@ -105,6 +105,7 @@ def build_items(source: str, parsed: Any) -> list[NewsItem]:
                 link=link,
                 summary=summary,
                 published_at=parse_published(entry),
+                trusted=trusted,
             )
         )
     return items
@@ -157,7 +158,7 @@ class RSSCollector:
             )
             return []
         parsed: Any = await asyncio.to_thread(feedparser.parse, response.content)
-        items = build_items(feed.source, parsed)
+        items = build_items(feed.source, parsed, feed.trusted)
         if self._max_items_per_feed is not None:
             items = items[: self._max_items_per_feed]
         logger.info("feed_collected source=%s items=%d", feed.source, len(items))

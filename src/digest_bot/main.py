@@ -23,10 +23,11 @@ from digest_bot.config import Settings
 from digest_bot.dedup import SQLiteStore
 from digest_bot.health import Heartbeat, start_health_server
 from digest_bot.logging_setup import setup_logging
-from digest_bot.models import CycleResult
+from digest_bot.models import CycleResult, NewsItem
 from digest_bot.pipeline import THRESHOLD_REASON, DigestPipeline
 from digest_bot.publisher.telegram import TelegramPublisher
 from digest_bot.summarizer.gigachat import GigaChatClient, GigaChatSummarizer
+from digest_bot.tags import tag_icon
 
 logger = logging.getLogger(__name__)
 
@@ -136,9 +137,12 @@ async def run_cycle(settings: Settings, *, dry_run: bool = False) -> CycleResult
                     summarizer=summarizer,
                     publisher=publisher,
                     keywords=settings.keywords,
+                    tag_rules=settings.tag_rules,
                     min_news_threshold=settings.min_news_threshold,
                     max_item_age_days=settings.max_item_age_days,
-                    max_items_per_digest=settings.max_items_per_digest,
+                    max_items_per_tag=settings.max_items_per_tag,
+                    max_posts_per_cycle=settings.max_posts_per_cycle,
+                    min_items_per_tag=settings.min_items_per_tag,
                     dry_run=dry_run,
                 )
                 return await pipeline.run_cycle()
@@ -150,14 +154,24 @@ async def run_cycle(settings: Settings, *, dry_run: bool = False) -> CycleResult
 
 
 def _print_dry_run(result: CycleResult, threshold: int) -> None:
-    """Вывести в stdout новости, которые ушли бы в дайджест (режим --dry-run)."""
+    """Вывести в stdout посты, которые ушли бы в канал (режим --dry-run)."""
     if result.skipped_reason == THRESHOLD_REASON:
-        sys.stdout.write(f"Порог не достигнут: отобрано {result.selected}, минимум {threshold}\n")
-    for index, item in enumerate(result.items, start=1):
-        sys.stdout.write(f"{index}. {item.title}\n   {item.source}: {item.link}\n")
+        sys.stdout.write(
+            f"Порог не достигнут: новых новостей {result.new_items}, минимум {threshold}\n"
+        )
+    if not result.items:
+        sys.stdout.flush()
+        return
+    by_tag: dict[str, list[NewsItem]] = {}
+    for item in result.items:
+        by_tag.setdefault(item.tag or "прочее", []).append(item)
+    for tag, items in by_tag.items():
+        sys.stdout.write(f"\n{tag_icon(tag)} {tag} — {len(items)} новостей\n")
+        for index, item in enumerate(items, start=1):
+            sys.stdout.write(f"  {index}. {item.title}\n     {item.source}: {item.link}\n")
     sys.stdout.write(
         f"\ncollected={result.collected} matched={result.matched} "
-        f"new={result.new_items} selected={result.selected}\n"
+        f"new={result.new_items} selected={result.selected} posts={result.posts}\n"
     )
     sys.stdout.flush()
 
@@ -172,6 +186,8 @@ def _scheduled_cycle(settings: Settings, heartbeat: Heartbeat) -> None:
         return
     heartbeat.record_success(
         items=result.selected,
+        posts=result.posts,
+        tags=",".join(result.tags),
         sent=result.published,
         skipped=result.skipped_reason,
     )

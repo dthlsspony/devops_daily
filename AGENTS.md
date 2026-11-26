@@ -4,10 +4,15 @@
 
 1. Собирает новости по безопасности из RSS-лент (PHP, Linux, nginx, Node.js, JS, web-стек).
 2. Фильтрует по ключевым словам, дедуплицирует по `link` через SQLite.
-3. Отбирает только свежие новости и ограничивает их число за цикл (`MAX_ITEM_AGE_DAYS`, `MAX_ITEMS_PER_DIGEST`).
-4. **Пропускает цикл**, если отобранных новостей меньше порога (`MIN_NEWS_THRESHOLD`).
-5. Отправляет собранные новости в GigaChat, чтобы получить связный реферат (дайджест).
-6. Публикует готовый дайджест в Telegram-канал.
+3. Отбирает только свежие новости (`MAX_ITEM_AGE_DAYS`).
+4. **Присваивает каждой новости ровно один тег** — по стеку (php, nodejs, linux,
+   nginx, cloud, web, windows…) и/или по типу события (supply-chain, malware,
+   exploits, leaks, advisories, policy, research).
+5. **Пропускает цикл**, если новых новостей меньше порога (`MIN_NEWS_THRESHOLD`).
+6. Отправляет новости в GigaChat — **отдельным вызовом на каждый тег** —
+   и получает связный реферат.
+7. Публикует **по одному посту на тег** в Telegram-канал: заголовок с иконкой и
+   тегом, реферат, подвал со счётчиком, источниками и хэштегом.
 
 Проект — **личный, некоммерческий**. GigaChat используется в режиме Freemium.
 
@@ -23,25 +28,34 @@
 [Scheduler: APScheduler]
         │
         ▼
-[Collectors: RSS] ──► [Filter: keywords] ──► [Dedup: SQLite, filter_new]
+[Collectors: RSS] ──► [Filter: keywords + trusted feeds] ──► [Dedup: SQLite, filter_new]
                                                     │
                                                     ▼
-                                          [Selection: свежесть + лимит]
+                                          [Selection: свежесть]
+                                                    │
+                                                    ▼
+                                          [Tagging: один тег на новость]
+                                          (tags.py: правила по словам и источникам)
+                                                    │
+                                                    ▼
+                                          [Selection: посты]
+                                          (не больше MAX_POSTS_PER_CYCLE,
+                                           не больше MAX_ITEMS_PER_TAG в посте)
                                                     │
                                                     ▼
                                           [Threshold check]
                                           (skip if < MIN_NEWS)
                                                     │
-                                                    ▼
-                                     [Summarizer: GigaChat]
-                                                    │
-                                                    ▼
-                                     [Publisher: Telegram]
-                                                    │
-                                                    ▼
-                                     [Dedup: mark_sent]
-                                     (только после успешной публикации)
+                        ┌───────────────────────────┴───────────────────────────┐
+                        ▼                                                       ▼
+            [Summarizer: GigaChat]  (отдельный вызов на тег)   [Publisher: Telegram]
+                        │                                                       │
+                        └──────────────────► [Dedup: mark_sent] ◄────────────────┘
+                                          (только после успешной публикации)
 ```
+
+За цикл публикуется не один смешанный дайджест, а **несколько постов — по одному
+на тег**. Новость попадает ровно в один пост, повторов между постами нет.
 
 Ключевой принцип: **каждый этап — изолированный модуль с чётким контрактом** (вход/выход — dataclass `NewsItem` или `Digest`). Это позволяет тестировать этапы по отдельности и легко подменять реализацию (например, GigaChat → OpenAI-совместимый клиент).
 
@@ -92,7 +106,8 @@ security-digest-bot/
 │       ├── main.py            # сборка зависимостей + APScheduler + обработка SIGTERM
 │       ├── models.py          # NewsItem, Digest, FilterResult, CycleResult
 │       ├── pipeline.py        # оркестратор: collect → filter → dedup → select → threshold → summarize → publish
-│       ├── filters.py         # keyword-фильтр, отбор по свежести и по лимиту
+│       ├── filters.py         # keyword-фильтр, отбор по свежести, доверенные ленты
+│       ├── tags.py            # TagRule, classify, group_by_tag, иконки тегов
 │       ├── dedup.py           # SQLiteStore
 │       ├── logging_setup.py   # stdout + RotatingFileHandler
 │       ├── health.py          # heartbeat-файл и HTTP-эндпоинт /healthz
@@ -118,6 +133,7 @@ security-digest-bot/
     │   ├── php_net_feed.xml     # php.net — Atom 1.0, 5 записей
     │   └── node_feed.xml        # Node.js security advisories — RSS 2.0, 78 записей
     ├── test_filters.py
+    ├── test_tags.py
     ├── test_collectors.py
     ├── test_dedup.py
     ├── test_summarizer.py
@@ -143,6 +159,8 @@ class NewsItem:
     link: str            # канонический URL — используется как ключ дедупликации
     summary: str = ""
     published_at: datetime | None = None
+    tag: str = ""        # тег; проставляется при группировке перед рефератом
+    trusted: bool = False  # новость из официальной advisory-ленты
 
 @dataclass(frozen=True, slots=True)
 class Digest:
@@ -150,13 +168,15 @@ class Digest:
     item_count: int
     sources: tuple[str, ...] = ()
     tokens: int = 0      # суммарный usage по всем батчам, если SDK его вернул
+    tag: str = ""        # тег, по которому сделан реферат
 ```
 
 - Модели **иммутабельны** (`frozen=True`).
 - Никаких `dict`-ов между модулями — только dataclass.
 - Служебные модели: `FilterResult(matched, rejected)` — результат фильтра;
-  `CycleResult(collected, matched, new_items, selected, published, tokens, skipped_reason, items)` —
-  итог цикла (`items` заполняется только в `--dry-run`).
+  `CycleResult(collected, matched, new_items, selected, posts, published, tokens,
+  skipped_reason, tags, items)` — итог цикла (`items` заполняется только в
+  `--dry-run`).
 
 ### 5.2. Контракты модулей (Protocol)
 
@@ -185,18 +205,27 @@ class Publisher(Protocol):
 - Обязательные переменные: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHANNEL_ID`, `GIGACHAT_CREDENTIALS`.
 - Необязательные с дефолтами:
   - расписание и порог: `SCHEDULE_HOURS=4`, `MIN_NEWS_THRESHOLD=2`;
-  - ограничения объёма: `MAX_ITEMS_PER_FEED=50`, `MAX_ITEM_AGE_DAYS=3`, `MAX_ITEMS_PER_DIGEST=30` (`0` — без ограничения);
+  - ограничения объёма: `MAX_ITEMS_PER_FEED=50`, `MAX_ITEM_AGE_DAYS=3`, `MAX_ITEMS_PER_TAG=15`, `MAX_POSTS_PER_CYCLE=5`, `MIN_ITEMS_PER_TAG=1` (`0` — без ограничения);
   - GigaChat: `GIGACHAT_MODEL=GigaChat-2-Max`, `GIGACHAT_VERIFY_SSL=true`, `CA_BUNDLE_PATH=./data/ca-bundle.pem`;
   - состояние: `DB_PATH=./data/seen.sqlite`, `DRY_RUN_DB_PATH=./data/seen.dry-run.sqlite`;
   - наблюдаемость: `LOG_LEVEL=INFO`, `LOG_DIR=./data/logs`, `HEALTH_PORT=8080`, `HEARTBEAT_MAX_AGE_SECONDS` (по умолчанию `SCHEDULE_HOURS` + 15 минут);
-  - источники: `FEEDS`, `KEYWORDS` (JSON-массивы).
+  - источники и правила: `FEEDS`, `KEYWORDS`, `TAG_RULES` (JSON-массивы).
 - Формы множественного числа и цифра после ключевого слова допустимы: `vulnerability` матчит `vulnerabilities`, `php` — `php8`.
+- `KEYWORDS` по умолчанию содержит **только признаки события безопасности**
+  (`cve`, `rce`, `vulnerability`, `exploit`, `malware`, …). Названия стеков
+  (`linux`, `php`, `node.js`) здесь не нужны: стек выражается тегом, а без
+  этого фильтра в дайджест попадали бенчмарки и обзоры.
+- `Feed.trusted=true` — все новости ленты релевантны без слов про безопасность
+  (официальные advisory и релизы: php.net, Node.js, USN Ubuntu, CISA).
 
 ### 5.4. Логирование
 
 - Стандартный `logging`, JSON-формат не требуется (личный проект). stdout + файл с ротацией.
-- На каждую итерацию пайплайна — `cycle_start`, затем `cycle_collected collected=N matched=N new=N selected=N`,
-  и итоговая строка: `cycle_skipped reason=threshold ...` или `cycle_done items=5 sent=True tokens=1234 marked=5`.
+- На каждую итерацию пайплайна — `cycle_start`, затем `cycle_collected collected=N relevant=N new=N selected=N posts=N`,
+  строка по каждому посту `cycle_post tag=php items=4 tokens=512` и итог:
+  `cycle_skipped reason=threshold ...` либо `cycle_done posts=5 items=39 sent=True tokens=2048`.
+- Причины пропуска цикла: `threshold` (мало новых новостей), `nothing_to_publish`
+  (новости есть, но все несвежие или без тега), `dry_run`.
 - Все сетевые ошибки — `WARNING` с URL, но без тела ответа (чтобы случайно не утащить токены/секреты в логи).
 - Никогда не логировать содержимое `.env`, ключи GigaChat, токен Telegram.
 - Исключения SDK `gigachat` не логировать как есть: их сообщение содержит тело и заголовки ответа.
@@ -229,12 +258,13 @@ class Publisher(Protocol):
 - Тесты не читают `.env`: значения по умолчанию проверяются через подкласс `Settings` с `env_file=None`.
 - Минимальный набор на каждый модуль:
   - `test_filters.py`: ключевые слова матчатся/не матчатся, регистр, несколько слов; отбор по свежести и лимиту.
-  - `test_collectors.py`: разбор реальных снимков (RSS 2.0 и Atom), лента без описаний, канонизация ссылок, падение одного фида.
+  - `test_tags.py`: классификация по заголовку, приоритет правил, фолбэк по источнику, порядок групп.
+  - `test_collectors.py`: разбор реальных снимков (RSS 2.0 и Atom), лента без описаний, канонизация ссылок, падение одного фида, доверенные ленты.
   - `test_dedup.py`: повторная вставка того же `link` возвращает `False`; после `mark_sent` — не попадает в выдачу.
   - `test_summarizer.py`: ответ замокан, проверяем, что промпт содержит все заголовки; батчи, retry.
   - `test_gigachat_client.py`: адаптер поверх настоящего SDK, сеть замокана `respx`.
   - `test_publisher.py`: разметка MarkdownV2, разбивка по 4096.
-  - `test_pipeline.py`: сценарий «мало новостей → publish не вызывается» и «достаточно → publish вызван один раз»; сбой не помечает новости.
+  - `test_pipeline.py`: сценарий «мало новостей → publish не вызывается» и «достаточно → publish вызван один раз»; сбой не помечает новости; отдельный пост на тег; лимиты постов и размера; новость публикуется ровно один раз.
   - `test_ca_bundle.py`, `test_config.py`, `test_main.py`: TLS-доверие, конфиг, CLI, health-эндпоинт, остановка планировщика.
 
 ---
@@ -282,8 +312,11 @@ bash dbot.sh python -V       # любая другая команда dev-кон
 5. **Планировщик внутри процесса.** Не переезжаем на внешний cron, пока процесс стабилен.
 6. **Новости не теряются при сбое.** Ссылки помечаются в SQLite только после успешной публикации; сбой реферата или публикации оставляет новости следующему циклу.
 7. **Ограничение объёма — часть контракта.** Без лимита записей на фид и лимита новостей на дайджест один фид-архив превращался в десятки вызовов GigaChat за цикл.
+7a. **Один пост — один тег.** Новость получает ровно один тег, поэтому между постами нет повторов; лучше несколько тематических постов, чем один смешанный.
+7b. **Тег — это стек и/или тип события.** Правило срабатывает по ключевым словам в заголовке или по источнику; порядок правил задаёт приоритет: отличительный тип (supply chain, malware, утечки) → стек → общий тип. Классификация идёт **по заголовку**: иначе случайное слово в описании уводило новость не в тот тег.
+7c. **Общая подборка (`прочее`) публикуется последней.** Иначе она вытесняла бы более специфичные теги (PHP, Node.js) из постов.
 8. **TLS к GigaChat проверяется, а не отключается.** OAuth-сервер GigaChat работает на сертификате Минцифры; корень встроен в пакет, его отпечаток закреплён в `ca_bundle.py` и проверяется при использовании. `GIGACHAT_VERIFY_SSL=false` — аварийный выход, а не норма.
-9. **Фиды по умолчанию — только существующие.** У nginx.org нет RSS, новости о nginx приходят из агрегаторов по ключевому слову; для Node.js берётся фид security-advisories.
+9. **Фиды по умолчанию — только существующие.** Каждый проверен вручную на формат и число записей. У nginx.org нет RSS, новости о nginx приходят из агрегаторов по ключевому слову; для Node.js берётся фид security-advisories.
 10. **Healthcheck отражает ход циклов, а не только живость процесса.** `/healthz` отдаёт 503, если heartbeat протух или 3 цикла подряд упали.
 11. **Первый цикл — сразу после старта**, а не через `SCHEDULE_HOURS`.
 12. **Сигналы обрабатываются явно.** В compose включён `init: true`, обработчик SIGTERM ставится в начале `main()` — иначе сигнал, пришедший при старте, теряется.
@@ -301,6 +334,8 @@ bash dbot.sh python -V       # любая другая команда dev-кон
 - ❌ Не отключать проверку TLS к GigaChat ради «чтобы заработало» — нужный корень уже встроен.
 - ❌ Не помечать новости в SQLite до успешной публикации.
 - ❌ Не добавлять фид, не проверив, что он существует и отдаёт разумное число записей.
+- ❌ Не добавлять в `KEYWORDS` названия стеков (`linux`, `php`, `node.js`): стек выражается тегом, а иначе в дайджест попадают бенчмарки и обзоры.
+- ❌ Не публиковать одну и ту же новость в двух постах: тег у новости один.
 - ❌ Не коммитить `data/*.sqlite`, `.env`, `__pycache__`.
 - ❌ Не использовать `print()` — только `logging`.
 - ❌ Не добавлять retry без backoff (использовать `tenacity` с `wait_exponential`).
@@ -349,8 +384,9 @@ bash dbot.sh python -V       # любая другая команда dev-кон
 **Цель:** собрать новости из RSS и отфильтровать по стеку.
 
 - [x] `collectors/rss.py`: `RSSCollector` с `httpx.AsyncClient` (User-Agent `SecurityFeedBot/1.0`) и `feedparser`.
-- [x] Список фидов — в `config.py`. По умолчанию: The Hacker News, BleepingComputer, PHP.net, Node.js security advisories. Отклонение от плана: у nginx.org нет RSS, а общий блог Node.js отдаёт архив на 1000+ записей (решение 9).
-- [x] `filters.py`: keyword-фильтр по `title + summary` (нижний регистр, `KEYWORDS` в конфиге, включая `php`, `linux`, `nginx`, `node.js`, `npm`, `cve`, `rce`, `xss`, `vulnerability`).
+- [x] Список фидов — в `config.py`. По умолчанию 26 лент: агрегаторы ИБ, стек (PHP, WordPress, Node.js, Python, Linux, Ubuntu, Red Hat, Kubernetes, Docker, GitHub, GitLab), облако (AWS, Cloudflare) и уязвимости (CISA, Cisco Talos, PortSwigger, Snyk, Project Zero). Отклонение от плана: у nginx.org нет RSS, а общий блог Node.js отдаёт архив на 1000+ записей (решение 9).
+- [x] `filters.py`: keyword-фильтр по `title + summary` (нижний регистр, `KEYWORDS` в конфиге, только признаки события безопасности) + доверенные advisory-ленты.
+- [x] `tags.py`: тематические теги, один пост на тег.
 - [x] Модель `NewsItem` заполняется корректно (`published_at` парсится, если есть).
 - [x] Тесты: `test_filters.py` + `test_collectors.py` на фикстурах.
 - [x] Ошибка одного фида не валит цикл.

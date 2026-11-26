@@ -15,7 +15,7 @@ import respx
 
 from digest_bot.collectors.rss import RSSCollector, build_items, canonical_link, clean_summary
 from digest_bot.config import DEFAULT_KEYWORDS, Feed
-from digest_bot.filters import filter_items
+from digest_bot.filters import filter_items, select_relevant
 
 FEED_URL = "https://example.com/feed.xml"
 BROKEN_URL = "https://example.com/broken.xml"
@@ -171,6 +171,8 @@ def test_default_keywords_cover_real_feeds(
 ) -> None:
     # Числа — это фактическое покрытие ключевых слов по умолчанию на снимках.
     # При смене KEYWORDS или обновлении снимков их нужно пересчитать осознанно.
+    # php.net даёт 0: там обычные релизы, они попадают в дайджест как доверенная
+    # лента, а не по ключевым словам (см. test_select_relevant).
     snapshots = {
         "thehackernews": hnr_feed_bytes,
         "bleepingcomputer": bleeping_feed_bytes,
@@ -185,7 +187,26 @@ def test_default_keywords_cover_real_feeds(
         for source, content in snapshots.items()
     }
 
-    assert matched == {"thehackernews": 35, "bleepingcomputer": 5, "php.net": 5, "nodejs": 66}
+    assert matched == {"thehackernews": 37, "bleepingcomputer": 9, "php.net": 0, "nodejs": 64}
+
+
+def test_trusted_feed_is_relevant_without_security_keywords(php_feed_bytes: bytes) -> None:
+    # Релизы php.net не содержат слов про безопасность, но лента доверенная.
+    items = build_items("php.net", feedparser.parse(php_feed_bytes), trusted=True)
+
+    relevant, rejected = select_relevant(items, DEFAULT_KEYWORDS)
+
+    assert len(relevant) == 5
+    assert rejected == []
+
+
+def test_untrusted_feed_without_security_keywords_is_dropped(php_feed_bytes: bytes) -> None:
+    items = build_items("php.net", feedparser.parse(php_feed_bytes))
+
+    relevant, rejected = select_relevant(items, DEFAULT_KEYWORDS)
+
+    assert relevant == []
+    assert len(rejected) == 5
 
 
 def test_canonical_link_removes_anchor_and_tracking() -> None:

@@ -53,9 +53,34 @@ def filter_items(items: Sequence[NewsItem], keywords: Sequence[str]) -> FilterRe
     return FilterResult(matched=tuple(matched), rejected=tuple(rejected))
 
 
-def _aware(moment: datetime) -> datetime:
+def select_relevant(
+    items: Sequence[NewsItem], keywords: Sequence[str]
+) -> tuple[list[NewsItem], list[NewsItem]]:
+    """Отобрать релевантные новости и отбросить остальные.
+
+    Релевантна новость, в которой есть ключевое слово **или** которая пришла
+    из доверенной ленты (официальные advisory и релизы — их тема известна
+    заранее, даже если в заголовке нет слов про безопасность).
+    """
+    patterns = compile_keywords(keywords)
+    relevant: list[NewsItem] = []
+    rejected: list[NewsItem] = []
+    for item in items:
+        if item.trusted or matches_keywords(item, patterns):
+            relevant.append(item)
+        else:
+            rejected.append(item)
+    return relevant, rejected
+
+
+def to_utc(moment: datetime) -> datetime:
     """Привести время к UTC (наивное время считается UTC)."""
     return moment if moment.tzinfo is not None else moment.replace(tzinfo=UTC)
+
+
+def _aware(moment: datetime) -> datetime:
+    """Привести время к UTC (наивное время считается UTC)."""
+    return to_utc(moment)
 
 
 def recent_items(
