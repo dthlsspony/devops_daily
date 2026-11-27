@@ -14,10 +14,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from digest_bot.models import NewsItem
+from digest_bot.urls import canonical_link
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 1
+#: Версия схемы. Рост версии означает изменение формата ключа дедупликации,
+#: поэтому при открытии базы выполняется перенос (миграция).
+SCHEMA_VERSION = 2
 _CHUNK_SIZE = 400
 
 _SCHEMA = """
@@ -64,10 +67,40 @@ class SQLiteStore:
         connection = sqlite3.connect(self._db_path, check_same_thread=False)
         connection.row_factory = sqlite3.Row
         connection.executescript(_SCHEMA)
+        version = int(connection.execute("PRAGMA user_version").fetchone()[0])
+        if version < SCHEMA_VERSION:
+            self._migrate(connection, version)
         connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         connection.commit()
         self._connection = connection
-        logger.info("store_opened path=%s", self._db_path)
+        logger.info("store_opened path=%s schema_version=%d", self._db_path, SCHEMA_VERSION)
+
+    def _migrate(self, connection: sqlite3.Connection, from_version: int) -> None:
+        """Привести сохранённые ссылки к текущему формату ключа.
+
+        Формат ключа изменился (v1 → v2: убран префикс ``www.``, схема
+        приведена к https). Пока это не сделано, новости, опубликованные до
+        обновления, лежат в базе под старыми ключами и не совпадают с новыми —
+        и публикуются заново.
+        """
+        if from_version < 1:
+            return
+        rows = connection.execute("SELECT link, sent_at FROM seen").fetchall()
+        changed = [
+            (str(row["link"]), canonical_link(str(row["link"])), str(row["sent_at"]))
+            for row in rows
+            if canonical_link(str(row["link"])) != str(row["link"])
+        ]
+        if not changed:
+            return
+        for old, _, _ in changed:
+            connection.execute("DELETE FROM seen WHERE link = ?", (old,))
+        for _, new, sent_at in changed:
+            connection.execute(
+                "INSERT OR IGNORE INTO seen (link, sent_at) VALUES (?, ?)",
+                (new, sent_at),
+            )
+        logger.info("store_migrated from_version=%d links=%d", from_version, len(changed))
 
     def close(self) -> None:
         """Закрыть соединение."""

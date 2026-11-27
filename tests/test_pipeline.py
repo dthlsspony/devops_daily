@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -540,3 +541,43 @@ async def test_duplicate_is_kept_when_nothing_published(tmp_path: Path) -> None:
 
     assert result.published is False
     assert store.filter_new([kept, duplicate]) == [kept, duplicate]
+
+
+async def test_news_published_before_an_update_is_not_republished(tmp_path: Path) -> None:
+    # Сценарий: программа обновилась, формат ключа дедупликации изменился
+    # (убран www.). Новость, опубликованная до обновления, лежит в базе под
+    # старым ключом — после переноса она не должна публиковаться заново.
+    db_path = tmp_path / "seen.sqlite"
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("CREATE TABLE seen (link TEXT PRIMARY KEY, sent_at TIMESTAMP NOT NULL)")
+        conn.execute(
+            "INSERT INTO seen (link, sent_at) VALUES (?, ?)",
+            ("https://www.helpnetsecurity.com/2026/11/26/keenadu", "2026-11-26T16:51:00+00:00"),
+        )
+        conn.execute("PRAGMA user_version = 1")
+        conn.commit()
+
+    items = [
+        NewsItem(
+            source="helpnetsecurity",
+            title="Keenadu malware preinstalled on Android devices",
+            link="https://helpnetsecurity.com/2026/11/26/keenadu",
+            summary="malware",
+        )
+    ]
+    publisher = FakePublisher()
+    store = SQLiteStore(db_path)
+    store.open()
+    pipeline = DigestPipeline(
+        collector=FakeCollector(items),
+        store=store,
+        summarizer=FakeSummarizer(),
+        publisher=publisher,
+        keywords=["malware"],
+        min_news_threshold=1,
+    )
+
+    result = await pipeline.run_cycle()
+
+    assert publisher.digests == []
+    assert result.new_items == 0

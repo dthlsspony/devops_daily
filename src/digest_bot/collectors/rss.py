@@ -11,13 +11,13 @@ import re
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import feedparser
 import httpx
 
 from digest_bot.config import Feed
 from digest_bot.models import NewsItem
+from digest_bot.urls import canonical_link
 
 logger = logging.getLogger(__name__)
 
@@ -26,43 +26,6 @@ SUMMARY_LIMIT = 500
 
 _TAG_RE = re.compile(r"<[^>]+>")
 _WHITESPACE_RE = re.compile(r"\s+")
-_TRACKING_PARAMS = frozenset({"fbclid", "gclid", "mc_cid", "mc_eid"})
-
-
-def canonical_link(url: str) -> str:
-    """Привести URL к каноническому виду (ключ дедупликации).
-
-    Убираются якорь, трекинговые параметры и завершающий слеш; схема
-    приводится к https, а префикс ``www.`` отбрасывается. Иначе одна и та же
-    статья, на которую сослались как ``http://www.example.com/a`` и как
-    ``https://example.com/a``, получила бы два разных ключа дедупликации и
-    попала бы в два тега.
-    """
-    cleaned = url.strip()
-    if not cleaned:
-        return ""
-    try:
-        parts = urlsplit(cleaned)
-    except ValueError:
-        return cleaned
-    if not parts.scheme or not parts.netloc:
-        return cleaned
-    try:
-        host = parts.hostname or ""
-        port = parts.port
-    except ValueError:
-        return cleaned
-    if host.startswith("www."):
-        host = host[4:]
-    netloc = host if port is None else f"{host}:{port}"
-    query = [
-        (key, value)
-        for key, value in parse_qsl(parts.query, keep_blank_values=True)
-        if not key.lower().startswith("utm_") and key.lower() not in _TRACKING_PARAMS
-    ]
-    path = parts.path.rstrip("/") or "/"
-    scheme = "https" if parts.scheme.lower() in ("http", "https") else parts.scheme.lower()
-    return urlunsplit((scheme, netloc, path, urlencode(query), ""))
 
 
 def clean_text(value: Any) -> str:

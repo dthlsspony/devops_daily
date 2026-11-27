@@ -13,9 +13,10 @@ import httpx
 import pytest
 import respx
 
-from digest_bot.collectors.rss import RSSCollector, build_items, canonical_link, clean_summary
+from digest_bot.collectors.rss import RSSCollector, build_items, clean_summary
 from digest_bot.config import DEFAULT_KEYWORDS, Feed
 from digest_bot.filters import filter_items, select_relevant
+from digest_bot.urls import canonical_link
 
 FEED_URL = "https://example.com/feed.xml"
 BROKEN_URL = "https://example.com/broken.xml"
